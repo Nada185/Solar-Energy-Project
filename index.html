@@ -345,43 +345,43 @@
                     name: "المحافظات",
                     nameEn: "Governorates",
                     file: "Governorates.geojson",
-                    color: "#FFFFFF",      // أبيض
-                    fillColor: "transparent",  // شفاف من الداخل
+                    color: "#FFFFFF",
+                    fillColor: "transparent",
                     fillOpacity: 0,
                     weight: 3,
                     isOutlineOnly: true,
-                    startActive: true  // تشتغل من البداية
+                    startActive: true
                 },
                 {
                     name: "قطع الأراضي",
                     nameEn: "All Parcels",
                     file: "All_Parcels.geojson",
-                    color: "#FF8C42",      // برتقالي جميل
-                    fillColor: "transparent",  // شفاف من الداخل
+                    color: "#FF8C42",
+                    fillColor: "transparent",
                     fillOpacity: 0,
                     weight: 2,
                     isOutlineOnly: true,
-                    startActive: false  // مطفية من البداية
+                    startActive: false
                 },
                 {
                     name: "قطع الأراضي المختارة",
                     nameEn: "Selected Parcels",
                     file: "Parcels.geojson",
-                    color: "#C17817",      // بني ذهبي
-                    fillColor: "#E6A23C",  // ذهبي فاتح
+                    color: "#C17817",
+                    fillColor: "#E6A23C",
                     fillOpacity: 0.4,
                     weight: 2,
-                    startActive: true  // تشتغل من البداية
+                    startActive: true
                 },
                 {
                     name: "المناطق المناسبة",
                     nameEn: "Suitable Areas",
                     file: "Suitable_Areas.geojson",
-                    color: "#8B6914",      // بني غامق
-                    fillColor: "#CD853F",  // بيرو
+                    color: "#8B6914",
+                    fillColor: "#CD853F",
                     fillOpacity: 0.4,
                     weight: 2,
-                    startActive: true  // تشتغل من البداية
+                    startActive: true
                 }
             ]
         };
@@ -389,8 +389,8 @@
         // ==================== المتغيرات العامة ====================
         let map;
         let loadedLayers = new Map();
-        let selectedLayer = null;  // للطبقة المحددة
-        let governoratesBounds = null; // لحفظ حدود المحافظات
+        let selectedLayer = null;
+        let governoratesBounds = null;
         
         // ترتيب الحقول المطلوب
         const FIELD_ORDER = [
@@ -417,12 +417,44 @@
                 zoomControl: true
             });
             
-            // إضافة خريطة ستالايت من Esri (مجانية بدون API key)
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                minZoom: 0,
+            // جرب صور الأقمار الصناعية من مصادر متعددة
+            // المصدر 1: Google Satellite (Unofficial - يشتغل غالباً)
+            const googleSat = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+                maxZoom: 20,
+                attribution: '© Google'
+            });
+            
+            // المصدر 2: Esri World Imagery (Backup)
+            const esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 maxZoom: 19,
-                attribution: '© Esri, Maxar, Earthstar Geographics, and the GIS User Community'
-            }).addTo(map);
+                attribution: '© Esri'
+            });
+            
+            // المصدر 3: USGS Imagery (Backup 2)
+            const usgsSat = L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 16,
+                attribution: '© USGS'
+            });
+            
+            // محاولة تحميل Google Satellite أولاً
+            googleSat.addTo(map);
+            
+            // إذا فشل Google، جرب Esri
+            googleSat.on('tileerror', function() {
+                console.log('⚠️ Google Satellite فشل، محاولة Esri...');
+                map.removeLayer(googleSat);
+                esriSat.addTo(map);
+                
+                // إذا فشل Esri أيضاً، استخدم OSM عادي
+                esriSat.on('tileerror', function() {
+                    console.log('⚠️ Esri فشل، استخدام OpenStreetMap...');
+                    map.removeLayer(esriSat);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '© OpenStreetMap'
+                    }).addTo(map);
+                });
+            });
             
             console.log('✓ تم إنشاء الخريطة');
         }
@@ -437,15 +469,13 @@
             for (let i = 0; i < CONFIG.layers.length; i++) {
                 const layerConfig = CONFIG.layers[i];
                 
-                // إنشاء عنصر القائمة
                 const layerItem = createLayerItem(layerConfig, i);
                 layerList.appendChild(layerItem);
                 
-                // تحميل الطبقة
                 try {
                     const layer = await loadGeoJSON(layerConfig, i);
                     if (layer) {
-                        const isActive = layerConfig.startActive !== false; // افتراضياً true إذا لم يتم تحديده
+                        const isActive = layerConfig.startActive !== false;
                         
                         loadedLayers.set(i, {
                             layer: layer,
@@ -453,7 +483,6 @@
                             active: isActive
                         });
                         
-                        // إضافة الطبقة للخريطة فقط إذا كانت نشطة
                         if (isActive) {
                             layer.addTo(map);
                             layerItem.classList.add('active');
@@ -463,10 +492,8 @@
                         
                         console.log(`✓ تم تحميل: ${layerConfig.name}`);
                         
-                        // إذا كانت طبقة المحافظات، احفظ حدودها
                         if (i === 0) {
                             governoratesBounds = layer.getBounds();
-                            // تثبيت الزوم على حدود المحافظات
                             map.fitBounds(governoratesBounds, { padding: [50, 50] });
                         }
                     }
@@ -492,7 +519,6 @@
                     throw new Error('تنسيق GeoJSON غير صحيح');
                 }
                 
-                // إنشاء الطبقة
                 const layer = L.geoJSON(data, {
                     style: {
                         color: config.color,
@@ -501,16 +527,13 @@
                         fillOpacity: config.fillOpacity || 0
                     },
                     onEachFeature: function(feature, layer) {
-                        // إذا كانت طبقة حدود فقط، لا تضيف تفاعل
                         if (config.isOutlineOnly) {
                             return;
                         }
                         
-                        // عند النقر
                         layer.on('click', function(e) {
                             L.DomEvent.stopPropagation(e);
                             
-                            // إزالة التحديد السابق
                             if (selectedLayer) {
                                 const oldConfig = selectedLayer._config;
                                 selectedLayer.setStyle({
@@ -521,34 +544,28 @@
                                 });
                             }
                             
-                            // تحديد العنصر الجديد
                             this.setStyle({
-                                color: '#FF6B35',      // برتقالي محروق
-                                fillColor: '#FFD700',  // ذهبي لامع
+                                color: '#FF6B35',
+                                fillColor: '#FFD700',
                                 weight: 4,
                                 fillOpacity: 0.7
                             });
                             
-                            // حفظ المرجع مع الإعدادات
                             selectedLayer = this;
                             selectedLayer._config = config;
                             
-                            // رفع المناطق المناسبة فوق القطع
-                            if (layerIndex === 3) { // المناطق المناسبة
+                            if (layerIndex === 3) {
                                 this.bringToFront();
                             }
                             
-                            // التكبير على العنصر
                             map.fitBounds(this.getBounds(), {
                                 padding: [100, 100],
                                 maxZoom: 17
                             });
                             
-                            // عرض المعلومات
                             showAttributes(feature.properties, config.name);
                         });
                         
-                        // عند التحويم
                         layer.on('mouseover', function() {
                             if (this !== selectedLayer) {
                                 this.setStyle({
@@ -557,8 +574,7 @@
                                 });
                             }
                             
-                            // رفع المناطق المناسبة فوق القطع عند التحويم
-                            if (layerIndex === 3) { // المناطق المناسبة
+                            if (layerIndex === 3) {
                                 this.bringToFront();
                             }
                         });
@@ -574,7 +590,6 @@
                     }
                 });
                 
-                // التأكد من أن المناطق المناسبة دائماً فوق القطع
                 if (layerIndex === 3) {
                     setTimeout(() => {
                         layer.bringToFront();
@@ -611,17 +626,14 @@
             if (!layerData) return;
             
             if (layerData.active) {
-                // إخفاء
                 map.removeLayer(layerData.layer);
                 element.classList.remove('active');
                 layerData.active = false;
             } else {
-                // إظهار
                 layerData.layer.addTo(map);
                 element.classList.add('active');
                 layerData.active = true;
                 
-                // التأكد من أن المناطق المناسبة فوق القطع
                 if (index === 3) {
                     setTimeout(() => {
                         layerData.layer.bringToFront();
@@ -632,7 +644,7 @@
             loadedLayers.set(index, layerData);
         }
         
-        // ==================== عرض الصفات كجدول أفقي ====================
+        // ==================== عرض الصفات ====================
         function showAttributes(properties, layerName) {
             const panel = document.getElementById('attributePanel');
             const content = document.getElementById('panelContent');
@@ -643,22 +655,16 @@
                 return;
             }
             
-            // الحقول المخفية
             const hiddenFields = ['Shape_Length', 'Shape_Area', 'Join_Count', 'TARGET_FID', 'Shape_Area_1', 'OBJECTID', 'Net_Util_Rate1'];
             
-            // تحديث العنوان
             title.textContent = layerName || 'معلومات العنصر';
             
-            // بناء الجدول الأفقي بالترتيب المحدد
             let tableHTML = '<div class="info-table-horizontal">';
             
-            // عرض الحقول حسب الترتيب المحدد
             for (let fieldName of FIELD_ORDER) {
-                // التحقق من وجود الحقل في البيانات
                 if (properties.hasOwnProperty(fieldName)) {
                     const value = properties[fieldName];
                     
-                    // تخطي القيم الفارغة
                     if (value === null || value === undefined || value === '') {
                         continue;
                     }
@@ -672,12 +678,10 @@
                 }
             }
             
-            // إضافة أي حقول إضافية غير موجودة في القائمة
             for (let key in properties) {
                 if (!FIELD_ORDER.includes(key) && !hiddenFields.includes(key)) {
                     const value = properties[key];
                     
-                    // تخطي القيم الفارغة
                     if (value === null || value === undefined || value === '') {
                         continue;
                     }
@@ -697,7 +701,7 @@
             panel.classList.add('show');
         }
         
-        // ==================== أسماء الحقول بالإنجليزي ====================
+        // ==================== أسماء الحقول ====================
         function getFieldDisplayName(fieldName) {
             const fieldNames = {
                 'Plot_NO': 'Parcel Number',
@@ -715,11 +719,10 @@
             return fieldNames[fieldName] || formatKey(fieldName);
         }
         
-        // ==================== إغلاق لوحة الصفات ====================
+        // ==================== إغلاق اللوحة ====================
         function closePanel() {
             document.getElementById('attributePanel').classList.remove('show');
             
-            // إزالة التحديد
             if (selectedLayer && selectedLayer._config) {
                 const config = selectedLayer._config;
                 selectedLayer.setStyle({
@@ -732,22 +735,18 @@
             }
         }
         
-        // ==================== تنسيق المفاتيح ====================
+        // ==================== تنسيق ====================
         function formatKey(key) {
             return key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
         }
         
-        // ==================== تنسيق القيم ====================
         function formatValue(value, fieldName) {
-            // الحقول التي يجب عرضها بالأرقام العربية
             const arabicNumberFields = ['Plot_NO', 'Net_Util_Rate'];
             
             if (typeof value === 'number') {
-                // إذا كان الحقل من الحقول المطلوب عرضها بالأرقام العربية
                 if (arabicNumberFields.includes(fieldName)) {
                     return value.toLocaleString('ar-EG');
                 }
-                // باقي الأرقام تبقى إنجليزية
                 return value.toLocaleString('en-US');
             }
             return String(value);
@@ -763,14 +762,12 @@
             console.log('✅ التطبيق جاهز!');
         });
         
-        // إغلاق اللوحة بزر Escape
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closePanel();
             }
         });
         
-        // إغلاق اللوحة عند النقر على الخريطة
         map.on('click', function() {
             closePanel();
         });
